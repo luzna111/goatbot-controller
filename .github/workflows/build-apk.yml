@@ -1,0 +1,130 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      
+      - name: Create App
+        run: |
+          mkdir -p dist
+          cat > dist/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+            <meta name="theme-color" content="#0f172a">
+            <title>GoatBot H1</title>
+            <style>
+              *{margin:0;padding:0;box-sizing:border-box;touch-action:none;-webkit-tap-highlight-color:transparent}
+              body{background:#0f172a;color:#fff;font-family:-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;overflow:hidden}
+              .screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+              .hidden{display:none!important}
+              h1{color:#10b981;font-size:24px;margin-bottom:8px}
+              .subtitle{color:#64748b;text-align:center;margin-bottom:30px;font-size:14px}
+              .btn{background:#10b981;color:#fff;border:none;padding:16px 32px;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;width:100%;max-width:280px;margin:8px 0}
+              .btn-gray{background:#334155}
+              .status{display:flex;gap:20px;margin-bottom:20px;font-size:13px}
+              .status-item{background:#1e293b;padding:10px 16px;border-radius:10px}
+              .status-label{color:#64748b}
+              .status-value{color:#10b981;font-weight:600}
+              .joystick{width:220px;height:220px;background:#1e293b;border-radius:50%;position:relative;border:2px solid #334155;margin:20px 0}
+              .knob{width:70px;height:70px;background:linear-gradient(135deg,#34d399,#10b981);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:0 4px 20px rgba(16,185,129,.4)}
+              .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;max-width:300px;margin-top:20px}
+              .info{color:#475569;font-size:11px;text-align:center;margin-top:30px;line-height:1.6}
+            </style>
+          </head>
+          <body>
+            <div id="connect" class="screen">
+              <div style="font-size:60px;margin-bottom:16px">🤖</div>
+              <h1>GoatBot Unicut H1</h1>
+              <div class="subtitle">Mower Disconnected<br>Tap to connect via Cloud</div>
+              <button class="btn" onclick="connect()">🔌 Connect to Mower</button>
+              <div class="info">Made by E-KANG Intelligent Technology (移康智能科技)<br>Connection: BLE → WiFi → Alibaba Cloud IoT</div>
+            </div>
+
+            <div id="main" class="screen hidden">
+              <h1>🤖 GoatBot H1</h1>
+              <div style="color:#10b981;font-size:13px;margin-bottom:16px">● Connected via Alibaba Cloud IoT</div>
+              
+              <div class="status">
+                <div class="status-item"><div class="status-label">🔋 Battery</div><div class="status-value">78%</div></div>
+                <div class="status-item"><div class="status-label">📶 Signal</div><div class="status-value">85%</div></div>
+                <div class="status-item"><div class="status-label">🌡️ Temp</div><div class="status-value">42°C</div></div>
+              </div>
+
+              <div class="joystick" id="joy"><div class="knob" id="knob"></div></div>
+              
+              <div class="controls">
+                <button class="btn" onclick="alert('Blade ON/OFF')">✂️ Blade</button>
+                <button class="btn btn-gray" onclick="alert('Returning home')">🏠 Home</button>
+              </div>
+              <button class="btn btn-gray" onclick="disconnect()" style="margin-top:10px">❌ Disconnect</button>
+            </div>
+
+            <script>
+              const joy=document.getElementById('joy'),knob=document.getElementById('knob');
+              let drag=false;
+              
+              function connect(){document.getElementById('connect').classList.add('hidden');document.getElementById('main').classList.remove('hidden')}
+              function disconnect(){document.getElementById('main').classList.add('hidden');document.getElementById('connect').classList.remove('hidden')}
+              
+              joy.addEventListener('touchstart',e=>{drag=true;move(e.touches[0])});
+              joy.addEventListener('touchmove',e=>{if(drag)move(e.touches[0])});
+              joy.addEventListener('touchend',()=>{drag=false;knob.style.transform='translate(-50%,-50%)'});
+              joy.addEventListener('mousedown',e=>{drag=true;move(e)});
+              window.addEventListener('mousemove',e=>{if(drag)move(e)});
+              window.addEventListener('mouseup',()=>{drag=false;knob.style.transform='translate(-50%,-50%)'});
+              
+              function move(e){
+                const r=joy.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,max=75;
+                let dx=e.clientX-cx,dy=e.clientY-cy,d=Math.sqrt(dx*dx+dy*dy);
+                if(d>max){dx=(dx/d)*max;dy=(dy/d)*max}
+                knob.style.transform=`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`;
+              }
+            </script>
+          </body>
+          </html>
+          EOF
+      
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Install Capacitor
+        run: npm install -g @capacitor/cli
+      
+      - name: Init Android Project
+        run: |
+          npx cap init GoatBotH1 io.goatbot.control --web-dir dist --skip
+          npx cap add android
+          npx cap sync
+      
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: goatbot-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
